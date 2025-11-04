@@ -1,0 +1,39 @@
+{
+  "name": "collabspace-backend",
+  "version": "1.0.0",
+  "description": "Backend for WorkHub / CollabSpace platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.42.3",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^7.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "http": "^0.0.1-security",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.10",
+    "socket.io": "^4.8.1",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^20.19.24",
+    "@types/uuid": "^10.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.5"
+  }
+}
