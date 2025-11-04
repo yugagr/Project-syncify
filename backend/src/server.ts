@@ -14,6 +14,7 @@ import analyticsRoutes from "./routes/analytics";
 import calendarRoutes from "./routes/calendar";
 import teamRoutes from "./routes/teams";
 import activityRoutes from "./routes/activity";
+import assistantRoutes from "./routes/assistant";
 
 import realtime from "./sockets/realtime";
 import { startReminderWorker } from "./utils/reminders";
@@ -42,6 +43,7 @@ app.use("/analytics", analyticsRoutes);
 app.use("/calendar", calendarRoutes);
 app.use("/teams", teamRoutes);
 app.use("/activity", activityRoutes);
+app.use("/assistant", assistantRoutes);
 
 // --- Initialize real-time events
 realtime(io);
