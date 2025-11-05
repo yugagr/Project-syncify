@@ -12,10 +12,15 @@ if (!supabaseUrl || !supabaseKey) {
   console.warn('⚠️ Supabase environment variables are missing.');
 }
 
-// Create client (no session persistence on server)
+// ✅ Create the client first
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false },
 });
+
+// ✅ Then expose it to the browser console
+if (typeof window !== 'undefined') {
+  (window as any).supabase = supabase;
+}
 
 // Optional: Export a user-facing client (with anon key) for limited access
 export const supabasePublic: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {

@@ -11,7 +11,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   const file = req.file as Express.Multer.File | undefined;
   const { projectId } = req.body as { projectId?: string };
   if (!file) return res.status(400).json({ error: 'file required' });
-  const bucket = 'public';
+  const bucket = 'project_bucket_public';
   const filename = `${Date.now()}_${file.originalname}`;
   try {
     const { data, error } = await supabase.storage.from(bucket).upload(filename, file.buffer, { contentType: file.mimetype, upsert: true });

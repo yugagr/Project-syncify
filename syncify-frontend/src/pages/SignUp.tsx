@@ -22,22 +22,33 @@ const SignUp = () => {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
+    
     setIsLoading(true);
     try {
-      await apiPost<{ message: string }>("/auth/register", { email, password, firstName, lastName });
-      const tokenResp = await apiPost<{ token: string; email: string }>("/auth/token", { email });
-      localStorage.setItem("token", tokenResp.token);
-      localStorage.setItem("email", tokenResp.email);
+       // Call backend signup
+      const resp = await apiPost<{ message: string; token?: string; email: string }>(
+        "/auth/register",
+        { email, password, firstName, lastName }
+      );
+    
+        // Save token only if email confirmation is disabled in Supabase
+      if (resp.token) {
+        localStorage.setItem("token", resp.token);
+        localStorage.setItem("email", resp.email);
+      }
+    
       navigate("/dashboard");
     } catch (err: any) {
       setError(err?.message || "Failed to sign up");
     } finally {
       setIsLoading(false);
     }
+    
   }
 
   return (

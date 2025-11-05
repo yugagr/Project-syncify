@@ -1,34 +1,43 @@
 import express from "express";
-import jwt from "jsonwebtoken";
 import supabase from "../config/supabase";
 import { UserPayload } from "../types";
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
 // -------------------------------------------
-// Generate Token for Existing/Upserted User
+// Validate Supabase access token, ensure user exists, return session info
 // -------------------------------------------
 router.post("/token", async (req, res) => {
-  const { email } = req.body as { email?: string };
+  const authHeader = req.headers.authorization;
+  const bodyToken = (req.body as any)?.access_token as string | undefined;
+  const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : bodyToken;
 
-  if (!email) return res.status(400).json({ error: "email required" });
+  if (!accessToken) return res.status(400).json({ error: "Missing access token" });
+
+  const { data, error } = await supabase.auth.getUser(accessToken);
+  if (error || !data?.user) return res.status(401).json({ error: "Invalid or expired token" });
+
+  const email = data.user.email || "";
+  const id = data.user.id;
 
   try {
-    await supabase.from("users").upsert({ email }).select();
+    await supabase
+      .from("users")
+      .upsert({ id, email })
+      .select("id")
+      .single();
   } catch (err) {
     console.warn("Failed to upsert user:", (err as any).message || err);
   }
 
-  const isAdmin = ADMIN_EMAILS.includes(email);
-  const payload: UserPayload = { email, isAdmin };
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  const isAdmin = email ? ADMIN_EMAILS.includes(email) : false;
+  const user: UserPayload = { email, isAdmin, id } as any;
 
-  res.json({ token, email, isAdmin });
+  res.json({ accessToken, user });
 });
 
 // -------------------------------------------

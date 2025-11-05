@@ -20,10 +20,19 @@ const SignIn = () => {
     setError(null);
     setIsLoading(true);
     try {
-      await apiPost<{ message: string }>("/auth/login", { email, password });
-      const tokenResp = await apiPost<{ token: string; email: string }>("/auth/token", { email });
-      localStorage.setItem("token", tokenResp.token);
-      localStorage.setItem("email", tokenResp.email);
+      const resp = await apiPost<{ message: string; token?: string; email?: string }>(
+        "/auth/login",
+        { email, password }
+      );
+
+      if (!resp.token) {
+        throw new Error("No token received from server");
+      }
+
+      // store session
+      localStorage.setItem("token", resp.token);
+      if (resp.email) localStorage.setItem("email", resp.email);
+
       navigate("/dashboard");
     } catch (err: any) {
       setError(err?.message || "Failed to login");

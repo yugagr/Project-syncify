@@ -5,7 +5,6 @@ import requireAuth from '../middleware/requireAuth';
 import logAction from '../utils/LogAction';
 import { Project } from '../types';
 
-// Extend Express Request interface to include 'user'
 declare global {
   namespace Express {
     interface Request {
@@ -18,17 +17,27 @@ const router = express.Router();
 
 router.post('/', requireAuth, async (req, res) => {
   const { title, slug, summary, content = '', public: isPublic = false } = req.body as Partial<Project>;
-  const owner = req.user?.email;
-  if (typeof owner !== 'string') {
-    return res.status(400).json({ error: 'User email is required' });
-  }
+  const ownerEmail = req.user?.email as string;
   try {
+    // Use Supabase Auth user id directly from middleware
+    const ownerId = (req.user as any)?.id as string | undefined;
+    if (!ownerId) return res.status(401).json({ error: 'Missing authenticated user id' });
+
     const id = uuidv4();
-    const { data, error } = await supabase.from('projects').insert([{ id, title, slug, summary, content, owner, public: isPublic }]).select().single();
+    const { data: project, error } = await supabase
+      .from('projects')
+      .insert([{ id, title, slug, summary, content, owner_id: ownerId, public: isPublic }])
+      .select()
+      .single();
+
     if (error) throw error;
-    await supabase.from('project_members').insert([{ project_id: id, user_email: owner, role: 'admin' }]);
-    await logAction(owner, id, `created project ${title}`);
-    res.json({ project: data });
+    // Add owner as admin member
+    await supabase.from('project_members').insert([{ project_id: id, user_email: ownerEmail, role: 'admin' }]);
+
+    // Log activity
+    await logAction(ownerEmail, id, `created project ${title}`);
+
+    res.json({ project });
   } catch (err: any) {
     res.status(500).json({ error: err.message || err });
   }
