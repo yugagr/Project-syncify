@@ -2,9 +2,74 @@ import Navigation from "@/components/Navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useState } from "react";
+import { useToast } from "@/components/ui/use-toast";
+import { apiPost } from "@/lib/api";
 import { Plus, Calendar, Users, MoreVertical } from "lucide-react";
 
 const Projects = () => {
+  const { toast } = useToast();
+
+  // New Project dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [npTitle, setNpTitle] = useState("");
+  const [npSummary, setNpSummary] = useState("");
+  const [npPublic, setNpPublic] = useState(false);
+  const availableFeatures = [
+    "Team Collaboration",
+    "Lightning Fast",
+    "Secure & Reliable",
+    "Analytics Dashboard",
+    "Real-time Chat",
+    "Project Management"
+  ];
+  const [npFeatures, setNpFeatures] = useState<string[]>([]);
+  const [npLoading, setNpLoading] = useState(false);
+
+  const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  const toggleFeature = (name: string, checked: boolean | string) => {
+    const isOn = checked === true || checked === "on";
+    setNpFeatures((prev) => (isOn ? Array.from(new Set([...prev, name])) : prev.filter((f) => f !== name)));
+  };
+
+  const resetForm = () => {
+    setNpTitle("");
+    setNpSummary("");
+    setNpPublic(false);
+    setNpFeatures([]);
+  };
+
+  const submitNewProject = async () => {
+    if (!npTitle.trim()) {
+      toast({ title: "Title is required" });
+      return;
+    }
+    try {
+      setNpLoading(true);
+      const payload: any = {
+        title: npTitle.trim(),
+        slug: toSlug(npTitle.trim()),
+        summary: npSummary.trim(),
+        content: JSON.stringify({ features: npFeatures }),
+        public: npPublic
+      };
+      await apiPost(`/projects`, payload);
+      toast({ title: "Project created" });
+      setCreateOpen(false);
+      resetForm();
+    } catch (e: any) {
+      toast({ title: "Failed to create project", description: e?.message || String(e) });
+    } finally {
+      setNpLoading(false);
+    }
+  };
+
   const projects = [
     {
       id: "7153842",
@@ -105,11 +170,57 @@ const Projects = () => {
             </h1>
             <p className="text-muted-foreground">Manage and track all your active projects</p>
           </div>
-          <Button className="bg-primary shadow-glow-primary">
+          <Button className="bg-primary shadow-glow-primary" onClick={() => setCreateOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             New Project
           </Button>
         </div>
+
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New Project</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-2">
+              <div className="grid gap-2">
+                <Label htmlFor="npTitle">Title</Label>
+                <Input id="npTitle" value={npTitle} onChange={(e) => setNpTitle(e.target.value)} placeholder="Project title" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="npSummary">Summary</Label>
+                <Textarea id="npSummary" value={npSummary} onChange={(e) => setNpSummary(e.target.value)} placeholder="Brief description" />
+              </div>
+              <div className="grid gap-2">
+                <Label>Features</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {availableFeatures.map((name) => (
+                    <label key={name} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={npFeatures.includes(name)}
+                        onCheckedChange={(v) => toggleFeature(name, v as any)}
+                      />
+                      <span>{name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox checked={npPublic} onCheckedChange={(v) => setNpPublic(v === true || v === "on")} />
+                  <span>Make project public</span>
+                </label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>
+                Cancel
+              </Button>
+              <Button className="bg-primary" disabled={!npTitle.trim() || npLoading} onClick={submitNewProject}>
+                {npLoading ? "Creating..." : "Create Project"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project) => (
