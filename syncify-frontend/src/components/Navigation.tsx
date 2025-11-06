@@ -4,14 +4,16 @@ import { LayoutDashboard, FolderKanban, Users, Settings } from "lucide-react";
 
 const Navigation = () => {
   const location = useLocation();
+  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
   
-  const navItems = [
-    { path: "/", label: "Home", icon: null },
-    { path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
-    { path: "/projects", label: "Projects", icon: <FolderKanban className="w-4 h-4" /> },
-    { path: "/teams", label: "Teams", icon: <Users className="w-4 h-4" /> },
-    { path: "/settings", label: "Settings", icon: <Settings className="w-4 h-4" /> }
-  ];
+  const navItems = isAuthenticated
+    ? [
+        { path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
+        { path: "/projects", label: "Projects", icon: <FolderKanban className="w-4 h-4" /> },
+        { path: "/teams", label: "Teams", icon: <Users className="w-4 h-4" /> },
+        { path: "/settings", label: "Settings", icon: <Settings className="w-4 h-4" /> }
+      ]
+    : [];
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -45,11 +47,25 @@ const Navigation = () => {
             ))}
           </div>
 
-          <Link to="/signin">
-            <Button size="sm" className="bg-primary shadow-glow-primary">
-              Login
+          {!isAuthenticated ? (
+            <Link to="/signin">
+              <Button size="sm" className="bg-primary shadow-glow-primary">
+                Login
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              size="sm"
+              className="bg-secondary shadow-glow-secondary"
+              onClick={() => {
+                localStorage.removeItem('token');
+                localStorage.removeItem('email');
+                window.location.href = '/';
+              }}
+            >
+              Logout
             </Button>
-          </Link>
+          )}
         </div>
       </div>
     </nav>

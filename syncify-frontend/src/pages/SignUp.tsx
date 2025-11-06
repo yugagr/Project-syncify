@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
-import Hyperspeed from "@/components/Hyperspeed";
+import Starfield from "@/components/Starfield";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,26 +58,7 @@ const SignUp = () => {
   return (
     <div className="min-h-screen relative bg-background text-foreground">
       <div className="absolute inset-0 -z-10">
-        <Hyperspeed
-          effectOptions={{
-            distortion: 'deepDistortion',
-            fov: 80,
-            fovSpeedUp: 120,
-            carLightsFade: 0.5,
-            totalSideLightSticks: 28,
-            lightPairsPerRoadWay: 36,
-            colors: {
-              background: 0x070314,
-              roadColor: 0x0a0a12,
-              islandColor: 0x0a0a12,
-              shoulderLines: 0x8368ff,
-              brokenLines: 0x8368ff,
-              leftCars: [0xf0abfc, 0xc084fc, 0xa78bfa],
-              rightCars: [0x22d3ee, 0x60a5fa, 0x7dd3fc],
-              sticks: 0x7c3aed
-            }
-          }}
-        />
+        <Starfield starCount={2500} depth={1400} color={0xffffff} />
         <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/30 to-background/80" />
       </div>
       <Navigation />
@@ -91,25 +72,25 @@ const SignUp = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First name</Label>
-                <Input id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+                <Input id="firstName" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last name</Label>
-                <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+                <Input id="lastName" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Create password</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <Input id="password" type="password" placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm password</Label>
-                <Input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+                <Input id="confirmPassword" type="password" placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
               </div>
             </div>
             {error && (

@@ -4,10 +4,15 @@ import Hyperspeed from "@/components/Hyperspeed";
 import Navigation from "@/components/Navigation";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import MagicBento from "@/components/MagicBento";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { Rocket, Users, Zap, Shield, BarChart3, MessageSquare } from "lucide-react";
 
 const Index = () => {
+  // Redirect authenticated users to dashboard
+  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
   const features = [
     {
       icon: <Users className="w-8 h-8" />,
