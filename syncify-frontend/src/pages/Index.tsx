@@ -53,6 +53,13 @@ const Index = () => {
       {/* Hero Section with Hyperspeed Background */}
       <section className="relative h-screen w-full overflow-hidden">
         <Hyperspeed />
+        <div className="absolute top-6 left-6 z-20">
+          <img
+            src="/brand/collabspace-logo.png"
+            alt="CollabSpace"
+            className="h-10 w-auto drop-shadow-[0_0_18px_rgba(132,0,255,0.25)]"
+          />
+        </div>
         
         {/* Hero Content */}
         <div className="relative z-10 flex flex-col items-center justify-center h-full px-4">

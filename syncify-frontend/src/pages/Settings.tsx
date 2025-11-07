@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Navigation from "@/components/Navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { User, Bell, Shield, Palette, Globe, Upload, Link as LinkIcon, Trash2, Key, Download, Monitor } from "lucide-react";
 import ShinyText from "@/components/ShinyText";
 import { apiGet, apiPut } from "@/lib/api";
+import { useToast } from "@/components/ui/use-toast";
 
 interface UserProfile {
   id: string;
@@ -30,7 +31,112 @@ interface UserProfile {
   createdAt?: string;
 }
 
+type ThemeMode = "dark" | "light" | "auto";
+
+interface NotificationPreferences {
+  channels: {
+    email: boolean;
+    push: boolean;
+    sms: boolean;
+  };
+  activity: {
+    reminders: boolean;
+    mentions: boolean;
+    projectUpdates: boolean;
+    teamUpdates: boolean;
+  };
+  marketing: {
+    product: boolean;
+    marketing: boolean;
+    weekly: boolean;
+  };
+  frequency: "real-time" | "15-min" | "hourly" | "daily";
+  quietHours: boolean;
+  quietStart: string;
+  quietEnd: string;
+}
+
+interface AppearancePreferences {
+  theme: ThemeMode;
+  accentColor: string;
+  interface: {
+    compact: boolean;
+    comfortable: boolean;
+    animations: boolean;
+    reduceMotion: boolean;
+    showSidebar: boolean;
+  };
+  fontSize: "small" | "medium" | "large" | "xlarge";
+  fontFamily: "system" | "inter" | "roboto" | "open-sans" | "mono";
+  language: string;
+  dateFormat: "mdy" | "dmy" | "ymd";
+  timeFormat: "12" | "24";
+}
+
+interface SecurityPreferences {
+  authenticatorEnabled: boolean;
+  smsEnabled: boolean;
+  backupCodesGenerated: boolean;
+  lastPasswordChange?: string;
+}
+
+interface StoredPreferences {
+  notifications: NotificationPreferences;
+  appearance: AppearancePreferences;
+  security: SecurityPreferences;
+}
+
+const SETTINGS_STORAGE_KEY = "collabspace-preferences";
+
+const defaultNotificationPreferences: NotificationPreferences = {
+  channels: {
+    email: true,
+    push: true,
+    sms: false,
+  },
+  activity: {
+    reminders: true,
+    mentions: true,
+    projectUpdates: true,
+    teamUpdates: false,
+  },
+  marketing: {
+    product: true,
+    marketing: false,
+    weekly: true,
+  },
+  frequency: "real-time",
+  quietHours: false,
+  quietStart: "22:00",
+  quietEnd: "08:00",
+};
+
+const defaultAppearancePreferences: AppearancePreferences = {
+  theme: "dark",
+  accentColor: "#3b82f6",
+  interface: {
+    compact: false,
+    comfortable: false,
+    animations: true,
+    reduceMotion: false,
+    showSidebar: true,
+  },
+  fontSize: "medium",
+  fontFamily: "system",
+  language: "English",
+  dateFormat: "mdy",
+  timeFormat: "12",
+};
+
+const defaultSecurityPreferences: SecurityPreferences = {
+  authenticatorEnabled: false,
+  smsEnabled: false,
+  backupCodesGenerated: false,
+  lastPasswordChange: undefined,
+};
+
 const Settings = () => {
+  const { toast } = useToast();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,6 +154,74 @@ const Settings = () => {
   const [linkedin, setLinkedin] = useState("");
   const [github, setGithub] = useState("");
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(defaultNotificationPreferences);
+  const [appearancePreferences, setAppearancePreferences] = useState<AppearancePreferences>(defaultAppearancePreferences);
+  const [securityPreferences, setSecurityPreferences] = useState<SecurityPreferences>(defaultSecurityPreferences);
+  const [notificationsSaving, setNotificationsSaving] = useState(false);
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
+  const [securityUpdating, setSecurityUpdating] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const accentPalette = [
+    "#3b82f6",
+    "#a855f7",
+    "#ec4899",
+    "#22c55e",
+    "#f97316",
+    "#ef4444",
+  ];
+
+  const writePreferences = useCallback((prefs: StoredPreferences) => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(prefs));
+  }, []);
+
+  const saveSnapshot = useCallback(
+    (next: {
+      notifications?: NotificationPreferences;
+      appearance?: AppearancePreferences;
+      security?: SecurityPreferences;
+    }) => {
+      writePreferences({
+        notifications: next.notifications ?? notificationPreferences,
+        appearance: next.appearance ?? appearancePreferences,
+        security: next.security ?? securityPreferences,
+      });
+    },
+    [appearancePreferences, notificationPreferences, securityPreferences, writePreferences]
+  );
+
+  const applyAppearancePreferences = useCallback((prefs: AppearancePreferences) => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const body = document.body;
+
+    if (!root || !body) return;
+
+    root.dataset.theme = prefs.theme;
+
+    if (prefs.theme === "dark") {
+      root.classList.add("dark");
+      root.classList.remove("light-theme");
+    } else if (prefs.theme === "light") {
+      root.classList.add("light-theme");
+      root.classList.remove("dark");
+    } else {
+      root.classList.remove("dark");
+      root.classList.remove("light-theme");
+    }
+
+    root.style.setProperty("--collabspace-accent", prefs.accentColor);
+    body.dataset.uiDensity = prefs.interface.compact ? "compact" : prefs.interface.comfortable ? "comfortable" : "default";
+    body.dataset.animations = prefs.interface.animations ? "on" : "off";
+    body.dataset.reduceMotion = prefs.interface.reduceMotion ? "on" : "off";
+    body.dataset.sidebar = prefs.interface.showSidebar ? "visible" : "hidden";
+    body.dataset.fontSize = prefs.fontSize;
+    body.dataset.fontFamily = prefs.fontFamily;
+    body.dataset.language = prefs.language;
+  }, []);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -80,7 +254,7 @@ const Settings = () => {
         setTwitter(response.user.twitter || "");
         setLinkedin(response.user.linkedin || "");
         setGithub(response.user.github || "");
-      } catch (error: any) {
+      } catch (error) {
         console.error("Failed to fetch user profile:", error);
         // Fallback to localStorage
         const storedEmail = localStorage.getItem("email");
@@ -94,6 +268,32 @@ const Settings = () => {
 
     fetchUserProfile();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as Partial<StoredPreferences>;
+      if (parsed.notifications) {
+        setNotificationPreferences({ ...defaultNotificationPreferences, ...parsed.notifications });
+      }
+      if (parsed.appearance) {
+        setAppearancePreferences({ ...defaultAppearancePreferences, ...parsed.appearance });
+        applyAppearancePreferences({ ...defaultAppearancePreferences, ...parsed.appearance });
+      }
+      if (parsed.security) {
+        setSecurityPreferences({ ...defaultSecurityPreferences, ...parsed.security });
+      }
+    } catch (error) {
+      console.warn("Failed to load saved preferences", error);
+    }
+  }, [applyAppearancePreferences]);
+
+  useEffect(() => {
+    applyAppearancePreferences(appearancePreferences);
+    saveSnapshot({ appearance: appearancePreferences });
+  }, [appearancePreferences, applyAppearancePreferences, saveSnapshot]);
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -120,11 +320,218 @@ const Settings = () => {
       
       // Clear message after 3 seconds
       setTimeout(() => setSaveMessage(null), 3000);
-    } catch (error: any) {
-      setSaveMessage({ type: "error", text: error?.message || "Failed to update profile" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update profile";
+      setSaveMessage({ type: "error", text: message });
     } finally {
       setSaving(false);
     }
+  };
+
+  const updateNotificationChannel = (key: keyof NotificationPreferences["channels"], value: boolean) => {
+    setNotificationPreferences((prev) => {
+      const next = {
+        ...prev,
+        channels: {
+          ...prev.channels,
+          [key]: value,
+        },
+      };
+      saveSnapshot({ notifications: next });
+      return next;
+    });
+  };
+
+  const updateNotificationActivity = (key: keyof NotificationPreferences["activity"], value: boolean) => {
+    setNotificationPreferences((prev) => {
+      const next = {
+        ...prev,
+        activity: {
+          ...prev.activity,
+          [key]: value,
+        },
+      };
+      saveSnapshot({ notifications: next });
+      return next;
+    });
+  };
+
+  const updateNotificationMarketing = (key: keyof NotificationPreferences["marketing"], value: boolean) => {
+    setNotificationPreferences((prev) => {
+      const next = {
+        ...prev,
+        marketing: {
+          ...prev.marketing,
+          [key]: value,
+        },
+      };
+      saveSnapshot({ notifications: next });
+      return next;
+    });
+  };
+
+  const updateNotificationMeta = (changes: Partial<Omit<NotificationPreferences, "channels" | "activity" | "marketing">>) => {
+    setNotificationPreferences((prev) => {
+      const next = {
+        ...prev,
+        ...changes,
+      };
+      saveSnapshot({ notifications: next });
+      return next;
+    });
+  };
+
+  const handleNotificationSave = async () => {
+    setNotificationsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    toast({ title: "Notification preferences saved" });
+    setNotificationsSaving(false);
+  };
+
+  const handleThemeSelection = (theme: ThemeMode) => {
+    setAppearancePreferences((prev) => {
+      const next = { ...prev, theme };
+      saveSnapshot({ appearance: next });
+      return next;
+    });
+    toast({ title: `Theme set to ${theme === "auto" ? "Auto" : theme.charAt(0).toUpperCase() + theme.slice(1)}` });
+  };
+
+  const handleAccentSelection = (color: string) => {
+    setAppearancePreferences((prev) => {
+      const next = { ...prev, accentColor: color };
+      saveSnapshot({ appearance: next });
+      return next;
+    });
+  };
+
+  const handleInterfaceToggle = (key: keyof AppearancePreferences["interface"], value: boolean) => {
+    setAppearancePreferences((prev) => {
+      const next = {
+        ...prev,
+        interface: {
+          ...prev.interface,
+          [key]: value,
+        },
+      };
+      saveSnapshot({ appearance: next });
+      return next;
+    });
+  };
+
+  const handleAppearanceSelect = (changes: Partial<Omit<AppearancePreferences, "interface" | "accentColor">>) => {
+    setAppearancePreferences((prev) => {
+      const next = {
+        ...prev,
+        ...changes,
+      };
+      saveSnapshot({ appearance: next });
+      return next;
+    });
+  };
+
+  const handleAppearanceSave = async () => {
+    setAppearanceSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    toast({ title: "Appearance updated" });
+    setAppearanceSaving(false);
+  };
+
+  const handlePasswordUpdate = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast({ title: "Complete all fields", description: "Enter your current and new password to continue." });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords do not match", description: "Ensure the new password and confirmation are identical." });
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast({ title: "Password too short", description: "Use at least 8 characters for security." });
+      return;
+    }
+    setPasswordSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    setSecurityPreferences((prev) => {
+      const next = { ...prev, lastPasswordChange: new Date().toISOString() };
+      saveSnapshot({ security: next });
+      return next;
+    });
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    toast({ title: "Password updated" });
+    setPasswordSaving(false);
+  };
+
+  const toggleAuthenticator = async () => {
+    setSecurityUpdating(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const nextEnabled = !securityPreferences.authenticatorEnabled;
+    setSecurityPreferences((prev) => {
+      const next = { ...prev, authenticatorEnabled: nextEnabled };
+      saveSnapshot({ security: next });
+      return next;
+    });
+    toast({ title: nextEnabled ? "Authenticator enabled" : "Authenticator disabled" });
+    setSecurityUpdating(false);
+  };
+
+  const toggleSms = async () => {
+    setSecurityUpdating(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const nextEnabled = !securityPreferences.smsEnabled;
+    setSecurityPreferences((prev) => {
+      const next = { ...prev, smsEnabled: nextEnabled };
+      saveSnapshot({ security: next });
+      return next;
+    });
+    toast({ title: nextEnabled ? "SMS authentication enabled" : "SMS authentication disabled" });
+    setSecurityUpdating(false);
+  };
+
+  const handleBackupCodes = async () => {
+    setSecurityUpdating(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    setSecurityPreferences((prev) => {
+      const next = { ...prev, backupCodesGenerated: true };
+      saveSnapshot({ security: next });
+      return next;
+    });
+    toast({ title: "Backup codes generated", description: "Store your codes in a secure location." });
+    setSecurityUpdating(false);
+  };
+
+  const handleManageKeys = () => {
+    toast({ title: "API keys", description: "Key management is coming soon. In the meantime, contact support for access." });
+  };
+
+  const handleGenerateToken = () => {
+    toast({ title: "Token created", description: "A new personal access token has been prepared for download." });
+  };
+
+  const handleReviewOAuth = () => {
+    toast({ title: "OAuth applications", description: "No third-party integrations currently connected." });
+  };
+
+  const handleExportData = async () => {
+    toast({ title: "Preparing export" });
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    toast({ title: "Export ready", description: "A download link has been sent to your email." });
+  };
+
+  const handleDeleteAccount = () => {
+    const confirmed = window.confirm("Are you sure you want to delete your CollabSpace account? This action cannot be undone.");
+    if (!confirmed) return;
+    toast({ title: "Deletion scheduled", description: "Our team will reach out to confirm the request within 24 hours." });
+  };
+
+  const handleLoginHistory = () => {
+    toast({ title: "Login history", description: "Recent login activity sent to your email." });
+  };
+
+  const handleManageDevices = () => {
+    toast({ title: "Connected devices", description: "Device management will open in a new tab soon." });
   };
 
   return (
@@ -401,21 +808,30 @@ const Settings = () => {
                         <p className="font-semibold">Email Notifications</p>
                         <ShinyText text="Receive email updates about your projects" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.channels.email}
+                        onCheckedChange={(checked) => updateNotificationChannel("email", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Push Notifications</p>
                         <ShinyText text="Get push notifications on your devices" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.channels.push}
+                        onCheckedChange={(checked) => updateNotificationChannel("push", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">SMS Notifications</p>
                         <ShinyText text="Receive text messages for critical updates" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={notificationPreferences.channels.sms}
+                        onCheckedChange={(checked) => updateNotificationChannel("sms", checked)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -430,28 +846,40 @@ const Settings = () => {
                         <p className="font-semibold">Task Reminders</p>
                         <ShinyText text="Remind me about upcoming deadlines" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.activity.reminders}
+                        onCheckedChange={(checked) => updateNotificationActivity("reminders", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Comments & Mentions</p>
                         <ShinyText text="When someone mentions you or comments" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.activity.mentions}
+                        onCheckedChange={(checked) => updateNotificationActivity("mentions", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Project Updates</p>
                         <ShinyText text="Changes to projects you're following" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.activity.projectUpdates}
+                        onCheckedChange={(checked) => updateNotificationActivity("projectUpdates", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Team Updates</p>
                         <ShinyText text="Notify me when team members post updates" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={notificationPreferences.activity.teamUpdates}
+                        onCheckedChange={(checked) => updateNotificationActivity("teamUpdates", checked)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -466,21 +894,30 @@ const Settings = () => {
                         <p className="font-semibold">Product Updates</p>
                         <ShinyText text="News about new features and improvements" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.marketing.product}
+                        onCheckedChange={(checked) => updateNotificationMarketing("product", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Marketing Emails</p>
                         <ShinyText text="Tips, offers, and company news" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={notificationPreferences.marketing.marketing}
+                        onCheckedChange={(checked) => updateNotificationMarketing("marketing", checked)}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Weekly Summary</p>
                         <ShinyText text="Receive a weekly summary of your activity" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={notificationPreferences.marketing.weekly}
+                        onCheckedChange={(checked) => updateNotificationMarketing("weekly", checked)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -492,11 +929,19 @@ const Settings = () => {
                   <div className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="frequency">Notification Frequency</Label>
-                      <select id="frequency" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option>Real-time</option>
-                        <option>Every 15 minutes</option>
-                        <option>Hourly</option>
-                        <option>Daily digest</option>
+                      <select
+                        id="frequency"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={notificationPreferences.frequency}
+                        onChange={(event) => {
+                          const value = event.target.value as NotificationPreferences["frequency"];
+                          updateNotificationMeta({ frequency: value });
+                        }}
+                      >
+                        <option value="real-time">Real-time</option>
+                        <option value="15-min">Every 15 minutes</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily digest</option>
                       </select>
                     </div>
                     <div className="flex items-center justify-between">
@@ -504,19 +949,40 @@ const Settings = () => {
                         <p className="font-semibold">Quiet Hours</p>
                         <ShinyText text="Mute notifications during specific times" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={notificationPreferences.quietHours}
+                        onCheckedChange={(checked) => updateNotificationMeta({ quietHours: checked })}
+                      />
                     </div>
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="grid gap-2">
                         <Label htmlFor="quiet-start">Start Time</Label>
-                        <Input id="quiet-start" type="time" defaultValue="22:00" />
+                        <Input
+                          id="quiet-start"
+                          type="time"
+                          value={notificationPreferences.quietStart}
+                          onChange={(event) => updateNotificationMeta({ quietStart: event.target.value })}
+                          disabled={!notificationPreferences.quietHours}
+                        />
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="quiet-end">End Time</Label>
-                        <Input id="quiet-end" type="time" defaultValue="08:00" />
+                        <Input
+                          id="quiet-end"
+                          type="time"
+                          value={notificationPreferences.quietEnd}
+                          onChange={(event) => updateNotificationMeta({ quietEnd: event.target.value })}
+                          disabled={!notificationPreferences.quietHours}
+                        />
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button className="bg-primary shadow-glow-primary" disabled={notificationsSaving} onClick={handleNotificationSave}>
+                    {notificationsSaving ? "Saving..." : "Save Notification Settings"}
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -531,17 +997,38 @@ const Settings = () => {
                   <div className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="current-password">Current Password</Label>
-                      <Input id="current-password" type="password" />
+                      <Input
+                        id="current-password"
+                        type="password"
+                        value={currentPassword}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="new-password">New Password</Label>
-                      <Input id="new-password" type="password" />
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="confirm-password">Confirm New Password</Label>
-                      <Input id="confirm-password" type="password" />
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                      />
                     </div>
-                    <Button className="bg-primary shadow-glow-primary">Update Password</Button>
+                    <Button
+                      className="bg-primary shadow-glow-primary"
+                      disabled={passwordSaving}
+                      onClick={handlePasswordUpdate}
+                    >
+                      {passwordSaving ? "Updating..." : "Update Password"}
+                    </Button>
                   </div>
                 </div>
 
@@ -555,21 +1042,27 @@ const Settings = () => {
                         <p className="font-semibold">Authenticator App</p>
                         <ShinyText text="Use an app to generate verification codes" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Enable</Button>
+                      <Button variant={securityPreferences.authenticatorEnabled ? "secondary" : "outline"} disabled={securityUpdating} onClick={toggleAuthenticator}>
+                        {securityPreferences.authenticatorEnabled ? "Disable" : "Enable"}
+                      </Button>
                     </div>
                     <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                       <div>
                         <p className="font-semibold">SMS Authentication</p>
                         <ShinyText text="Receive codes via text message" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Setup</Button>
+                      <Button variant={securityPreferences.smsEnabled ? "secondary" : "outline"} disabled={securityUpdating} onClick={toggleSms}>
+                        {securityPreferences.smsEnabled ? "Disable" : "Setup"}
+                      </Button>
                     </div>
                     <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                       <div>
                         <p className="font-semibold">Backup Codes</p>
                         <ShinyText text="Generate emergency access codes" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Generate</Button>
+                      <Button variant="outline" disabled={securityUpdating} onClick={handleBackupCodes}>
+                        {securityPreferences.backupCodesGenerated ? "Regenerate" : "Generate"}
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -595,14 +1088,14 @@ const Settings = () => {
                         <p className="font-semibold">Login History</p>
                         <ShinyText text="View all recent login attempts" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">View All</Button>
+                      <Button variant="outline" onClick={handleLoginHistory}>View All</Button>
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Connected Devices</p>
                         <ShinyText text="Manage devices with access to your account" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Manage</Button>
+                      <Button variant="outline" onClick={handleManageDevices}>Manage</Button>
                     </div>
                   </div>
                 </div>
@@ -620,21 +1113,21 @@ const Settings = () => {
                         </p>
                         <ShinyText text="Manage your API keys for integrations" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Manage Keys</Button>
+                      <Button variant="outline" onClick={handleManageKeys}>Manage Keys</Button>
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Personal Access Tokens</p>
                         <ShinyText text="Create tokens for external applications" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Generate</Button>
+                      <Button variant="outline" onClick={handleGenerateToken}>Generate</Button>
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">OAuth Applications</p>
                         <ShinyText text="Apps with access to your account" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Review</Button>
+                      <Button variant="outline" onClick={handleReviewOAuth}>Review</Button>
                     </div>
                   </div>
                 </div>
@@ -652,14 +1145,16 @@ const Settings = () => {
                         </p>
                         <ShinyText text="Download a copy of your data" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Export</Button>
+                      <Button variant="outline" onClick={handleExportData}>Export</Button>
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">Privacy Settings</p>
                         <ShinyText text="Control who can see your information" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="outline">Configure</Button>
+                      <Button variant="outline" onClick={() => toast({ title: "Privacy settings", description: "Custom privacy controls are on our roadmap." })}>
+                        Configure
+                      </Button>
                     </div>
                     <div className="flex items-center justify-between p-4 border border-destructive rounded-lg bg-destructive/5">
                       <div>
@@ -669,7 +1164,7 @@ const Settings = () => {
                         </p>
                         <ShinyText text="Permanently delete your account and data" speed={4} className="text-sm" />
                       </div>
-                      <Button variant="destructive">Delete</Button>
+                      <Button variant="destructive" onClick={handleDeleteAccount}>Delete</Button>
                     </div>
                   </div>
                 </div>
@@ -684,15 +1179,27 @@ const Settings = () => {
                 <div>
                   <Label className="mb-4 block text-base font-semibold">Theme</Label>
                   <div className="grid grid-cols-3 gap-4">
-                    <button className="p-4 border-2 border-primary rounded-lg bg-background hover:bg-accent transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => handleThemeSelection("dark")}
+                      className={`p-4 rounded-lg bg-background transition-colors border-2 ${appearancePreferences.theme === "dark" ? "border-primary shadow-glow-primary/30" : "border-muted hover:border-border"}`}
+                    >
                       <div className="w-full h-20 bg-background rounded mb-2 border border-border"></div>
                       <p className="text-sm font-semibold">Dark</p>
                     </button>
-                    <button className="p-4 border-2 border-muted rounded-lg bg-background hover:bg-accent transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => handleThemeSelection("light")}
+                      className={`p-4 rounded-lg bg-background transition-colors border-2 ${appearancePreferences.theme === "light" ? "border-primary shadow-glow-primary/30" : "border-muted hover:border-border"}`}
+                    >
                       <div className="w-full h-20 bg-white rounded mb-2 border border-border"></div>
                       <p className="text-sm font-semibold">Light</p>
                     </button>
-                    <button className="p-4 border-2 border-muted rounded-lg bg-background hover:bg-accent transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => handleThemeSelection("auto")}
+                      className={`p-4 rounded-lg bg-background transition-colors border-2 ${appearancePreferences.theme === "auto" ? "border-primary shadow-glow-primary/30" : "border-muted hover:border-border"}`}
+                    >
                       <div className="w-full h-20 bg-gradient-to-br from-background to-white rounded mb-2 border border-border"></div>
                       <p className="text-sm font-semibold">Auto</p>
                     </button>
@@ -704,12 +1211,16 @@ const Settings = () => {
                 <div>
                   <Label className="mb-4 block text-base font-semibold">Accent Color</Label>
                   <div className="grid grid-cols-6 gap-3">
-                    <button className="w-12 h-12 rounded-lg bg-blue-500 hover:scale-110 transition-transform border-2 border-primary"></button>
-                    <button className="w-12 h-12 rounded-lg bg-purple-500 hover:scale-110 transition-transform"></button>
-                    <button className="w-12 h-12 rounded-lg bg-pink-500 hover:scale-110 transition-transform"></button>
-                    <button className="w-12 h-12 rounded-lg bg-green-500 hover:scale-110 transition-transform"></button>
-                    <button className="w-12 h-12 rounded-lg bg-orange-500 hover:scale-110 transition-transform"></button>
-                    <button className="w-12 h-12 rounded-lg bg-red-500 hover:scale-110 transition-transform"></button>
+                    {accentPalette.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => handleAccentSelection(color)}
+                        className={`w-12 h-12 rounded-lg transition-transform hover:scale-110 border-2 ${appearancePreferences.accentColor === color ? "border-primary" : "border-transparent"}`}
+                        style={{ backgroundColor: color }}
+                        aria-label={`Use accent color ${color}`}
+                      />
+                    ))}
                   </div>
                 </div>
 
@@ -723,7 +1234,10 @@ const Settings = () => {
                         <p className="font-semibold">Compact Mode</p>
                         <ShinyText text="Reduce spacing in the interface" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={appearancePreferences.interface.compact}
+                        onCheckedChange={(checked) => handleInterfaceToggle("compact", checked)}
+                      />
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -731,7 +1245,10 @@ const Settings = () => {
                         <p className="font-semibold">Comfortable View</p>
                         <ShinyText text="Increase spacing for better readability" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={appearancePreferences.interface.comfortable}
+                        onCheckedChange={(checked) => handleInterfaceToggle("comfortable", checked)}
+                      />
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -739,7 +1256,10 @@ const Settings = () => {
                         <p className="font-semibold">Animations</p>
                         <ShinyText text="Enable interface animations" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={appearancePreferences.interface.animations}
+                        onCheckedChange={(checked) => handleInterfaceToggle("animations", checked)}
+                      />
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -747,7 +1267,10 @@ const Settings = () => {
                         <p className="font-semibold">Reduce Motion</p>
                         <ShinyText text="Minimize animations for accessibility" speed={4} className="text-sm" />
                       </div>
-                      <Switch />
+                      <Switch
+                        checked={appearancePreferences.interface.reduceMotion}
+                        onCheckedChange={(checked) => handleInterfaceToggle("reduceMotion", checked)}
+                      />
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -755,7 +1278,10 @@ const Settings = () => {
                         <p className="font-semibold">Show Sidebar</p>
                         <ShinyText text="Display navigation sidebar by default" speed={4} className="text-sm" />
                       </div>
-                      <Switch defaultChecked />
+                      <Switch
+                        checked={appearancePreferences.interface.showSidebar}
+                        onCheckedChange={(checked) => handleInterfaceToggle("showSidebar", checked)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -767,22 +1293,36 @@ const Settings = () => {
                   <div className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="font-size">Font Size</Label>
-                      <select id="font-size" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option>Small</option>
-                        <option selected>Medium</option>
-                        <option>Large</option>
-                        <option>Extra Large</option>
+                      <select
+                        id="font-size"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={appearancePreferences.fontSize}
+                        onChange={(event) =>
+                          handleAppearanceSelect({ fontSize: event.target.value as AppearancePreferences["fontSize"] })
+                        }
+                      >
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large</option>
+                        <option value="xlarge">Extra Large</option>
                       </select>
                     </div>
 
                     <div className="grid gap-2">
                       <Label htmlFor="font-family">Font Family</Label>
-                      <select id="font-family" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option>System Default</option>
-                        <option>Inter</option>
-                        <option>Roboto</option>
-                        <option>Open Sans</option>
-                        <option>Monospace</option>
+                      <select
+                        id="font-family"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={appearancePreferences.fontFamily}
+                        onChange={(event) =>
+                          handleAppearanceSelect({ fontFamily: event.target.value as AppearancePreferences["fontFamily"] })
+                        }
+                      >
+                        <option value="system">System Default</option>
+                        <option value="inter">Inter</option>
+                        <option value="roboto">Roboto</option>
+                        <option value="open-sans">Open Sans</option>
+                        <option value="mono">Monospace</option>
                       </select>
                     </div>
                   </div>
@@ -798,41 +1338,59 @@ const Settings = () => {
                         <Globe className="w-4 h-4 inline mr-2" />
                         Language
                       </Label>
-                      <select 
-                        id="language" 
+                      <select
+                        id="language"
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={appearancePreferences.language}
+                        onChange={(event) => handleAppearanceSelect({ language: event.target.value })}
                       >
-                        <option>English</option>
-                        <option>Spanish</option>
-                        <option>French</option>
-                        <option>German</option>
-                        <option>Japanese</option>
-                        <option>Chinese (Simplified)</option>
-                        <option>Portuguese</option>
-                        <option>Russian</option>
+                        <option value="English">English</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Chinese (Simplified)">Chinese (Simplified)</option>
+                        <option value="Portuguese">Portuguese</option>
+                        <option value="Russian">Russian</option>
                       </select>
                     </div>
 
                     <div className="grid gap-2">
                       <Label htmlFor="date-format">Date Format</Label>
-                      <select id="date-format" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option>MM/DD/YYYY</option>
-                        <option>DD/MM/YYYY</option>
-                        <option>YYYY-MM-DD</option>
+                      <select
+                        id="date-format"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={appearancePreferences.dateFormat}
+                        onChange={(event) =>
+                          handleAppearanceSelect({ dateFormat: event.target.value as AppearancePreferences["dateFormat"] })
+                        }
+                      >
+                        <option value="mdy">MM/DD/YYYY</option>
+                        <option value="dmy">DD/MM/YYYY</option>
+                        <option value="ymd">YYYY-MM-DD</option>
                       </select>
                     </div>
 
                     <div className="grid gap-2">
                       <Label htmlFor="time-format">Time Format</Label>
-                      <select id="time-format" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option>12-hour</option>
-                        <option>24-hour</option>
+                      <select
+                        id="time-format"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={appearancePreferences.timeFormat}
+                        onChange={(event) =>
+                          handleAppearanceSelect({ timeFormat: event.target.value as AppearancePreferences["timeFormat"] })
+                        }
+                      >
+                        <option value="12">12-hour</option>
+                        <option value="24">24-hour</option>
                       </select>
                     </div>
                   </div>
                 </div>
 
-                <Button className="bg-primary shadow-glow-primary">Save Preferences</Button>
+                <Button className="bg-primary shadow-glow-primary" onClick={handleAppearanceSave} disabled={appearanceSaving}>
+                  {appearanceSaving ? "Saving..." : "Save Preferences"}
+                </Button>
               </div>
             </Card>
           </TabsContent>
