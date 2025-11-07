@@ -1,9 +1,11 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 import supabase from '../config/supabase';
 import requireAuth from '../middleware/requireAuth';
 import logAction from '../utils/LogAction';
 import { Project } from '../types';
+import { sendInvitationEmail } from '../utils/email';
 
 declare global {
   namespace Express {
@@ -43,6 +45,53 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// Get all projects for authenticated user (owned or member of)
+router.get('/', requireAuth, async (req, res) => {
+  const userEmail = req.user?.email as string;
+  const userId = (req.user as any)?.id as string | undefined;
+  
+  try {
+    if (!userId) return res.status(401).json({ error: 'Missing authenticated user id' });
+    
+    // Get projects where user is owner
+    const { data: ownedProjects, error: ownedErr } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('owner_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (ownedErr) throw ownedErr;
+    
+    // Get projects where user is a member
+    const { data: memberProjects, error: memberErr } = await supabase
+      .from('project_members')
+      .select('project_id, projects:project_id (*)')
+      .eq('user_email', userEmail);
+    
+    if (memberErr) throw memberErr;
+    
+    // Combine owned and member projects, removing duplicates
+    const memberProjectIds = (memberProjects || []).map((mp: any) => mp.projects?.id).filter(Boolean);
+    const allProjectIds = new Set([
+      ...(ownedProjects || []).map((p: any) => p.id),
+      ...memberProjectIds
+    ]);
+    
+    // Fetch all unique projects
+    const { data: allProjects, error: allErr } = await supabase
+      .from('projects')
+      .select('*')
+      .in('id', Array.from(allProjectIds))
+      .order('created_at', { ascending: false });
+    
+    if (allErr) throw allErr;
+    
+    res.json({ projects: allProjects || [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || err });
+  }
+});
+
 router.get('/public', async (req, res) => {
   try {
     const { data, error } = await supabase.from('projects').select('*').eq('public', true).order('created_at', { ascending: false });
@@ -56,15 +105,130 @@ router.get('/public', async (req, res) => {
 router.post('/:id/invite', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { email, role = 'member' } = req.body as { email: string; role?: string };
+  const inviterEmail = req.user?.email as string;
+  const inviterId = (req.user as any)?.id as string | undefined;
+  
   try {
-    const { data: caller, error: callerErr } = await supabase.from('project_members').select('role').eq('project_id', id).eq('user_email', req.user?.email).maybeSingle();
-    if (callerErr) throw callerErr;
-    if (!caller || (caller.role !== 'admin' && caller.role !== 'manager')) return res.status(403).json({ error: 'requires admin or manager' });
-    await supabase.from('project_members').upsert({ project_id: id, user_email: email, role });
-    await logAction(req.user?.email || 'unknown', id, `invited ${email} as ${role}`);
-    res.json({ ok: true });
+    if (!inviterId) return res.status(401).json({ error: 'Missing authenticated user id' });
+    
+    // Check if project exists and get owner_id
+    const { data: project, error: projectErr } = await supabase
+      .from('projects')
+      .select('id, title, owner_id')
+      .eq('id', id)
+      .single();
+    
+    if (projectErr || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Only the project owner (creator) can invite members
+    if (project.owner_id !== inviterId) {
+      return res.status(403).json({ error: 'Only the project creator can invite team members' });
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    
+    // Validate role
+    const validRoles = ['viewer', 'member', 'manager', 'admin'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be one of: viewer, member, manager, admin' });
+    }
+    
+    // Check if user is already a member
+    const { data: existingMember } = await supabase
+      .from('project_members')
+      .select('user_email')
+      .eq('project_id', id)
+      .eq('user_email', email)
+      .maybeSingle();
+    
+    if (existingMember) {
+      return res.status(400).json({ error: 'User is already a member of this project' });
+    }
+    
+    // Check if there's already a pending invitation
+    const { data: existingInvitation } = await supabase
+      .from('project_invitations')
+      .select('id, status')
+      .eq('project_id', id)
+      .eq('invited_email', email)
+      .eq('status', 'pending')
+      .maybeSingle();
+    
+    if (existingInvitation) {
+      return res.status(400).json({ error: 'An invitation has already been sent to this email' });
+    }
+    
+    // Generate invitation token
+    const invitationToken = crypto.randomBytes(32).toString('hex');
+    const invitationId = uuidv4();
+    
+    // Create invitation record
+    const { data: invitation, error: inviteErr } = await supabase
+      .from('project_invitations')
+      .insert([{
+        id: invitationId,
+        project_id: id,
+        invited_by_email: inviterEmail,
+        invited_email: email,
+        role: role,
+        status: 'pending',
+        token: invitationToken,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+      }])
+      .select()
+      .single();
+    
+    if (inviteErr) throw inviteErr;
+    
+    // Get inviter name for email
+    const { data: inviterUser } = await supabase
+      .from('users')
+      .select('first_name, last_name')
+      .eq('email', inviterEmail)
+      .maybeSingle();
+    
+    const inviterName = inviterUser?.first_name && inviterUser?.last_name
+      ? `${inviterUser.first_name} ${inviterUser.last_name}`
+      : inviterUser?.first_name || undefined;
+    
+    // Send invitation email
+    try {
+      await sendInvitationEmail({
+        invitedEmail: email,
+        projectTitle: project.title || 'Untitled Project',
+        inviterEmail,
+        inviterName,
+        role,
+        invitationToken,
+        projectId: id
+      });
+    } catch (emailErr) {
+      console.error('Failed to send invitation email:', emailErr);
+      // Don't fail the request if email fails, but log it
+    }
+    
+    // Log activity
+    await logAction(inviterEmail, id, `invited ${email} as ${role}`);
+    
+    res.json({ 
+      ok: true, 
+      invitation: {
+        id: invitation.id,
+        invited_email: invitation.invited_email,
+        role: invitation.role,
+        status: invitation.status,
+        expires_at: invitation.expires_at
+      }
+    });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || err });
+    console.error('Invite error:', err);
+    res.status(500).json({ error: err.message || 'Failed to send invitation' });
   }
 });
 
