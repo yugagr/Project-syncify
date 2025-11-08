@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
-import Hyperspeed from "@/components/Hyperspeed";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
+import { WavyBackground } from "@/components/ui/wavy-background"; 
 
 const SignIn = () => {
   const navigate = useNavigate();
@@ -21,7 +21,6 @@ const SignIn = () => {
     setError(null);
 
     try {
-      // ✅ Sign in user with Supabase
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -34,14 +33,10 @@ const SignIn = () => {
       }
 
       const accessToken = data.session.access_token;
-
-      // ✅ Save session in localStorage
       localStorage.setItem("token", accessToken);
       localStorage.setItem("email", email);
 
-      // ✅ Navigate to dashboard
       navigate("/dashboard", { replace: true });
-
     } catch (err: any) {
       setError(err.message || "Failed to log in");
     } finally {
@@ -50,17 +45,28 @@ const SignIn = () => {
   };
 
   return (
-    <div className="min-h-screen relative bg-background text-foreground">
+    <div className="relative min-h-screen overflow-hidden text-foreground">
+      {/* 🎨 Background Layer */}
       <div className="absolute inset-0 -z-10">
-        <Hyperspeed />
+        <WavyBackground
+          backgroundFill="#0f0f11"
+          waveOpacity={0.8}
+          blur={8}
+          speed="slow"
+          colors={["#7c3aed", "#8b5cf6", "#a78bfa", "#c084fc"]}
+        />
       </div>
+
+      {/* 🌐 Navigation */}
       <Navigation />
-      <div className="max-w-md mx-auto pt-28 px-4">
-        <Card className="p-8 space-y-6">
-          <h1 className="text-3xl font-bold text-center">Login</h1>
+
+      {/* 💳 Login Card */}
+      <div className="max-w-md mx-auto pt-28 px-4 relative z-10">
+        <Card className="p-8 space-y-6 bg-black/40 backdrop-blur-lg border border-white/10 shadow-2xl">
+          <h1 className="text-3xl font-bold text-center text-white">Login</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label>Email</Label>
+              <Label className="text-white">Email</Label>
               <Input
                 type="email"
                 required
@@ -69,7 +75,7 @@ const SignIn = () => {
               />
             </div>
             <div>
-              <Label>Password</Label>
+              <Label className="text-white">Password</Label>
               <Input
                 type="password"
                 required
@@ -78,17 +84,23 @@ const SignIn = () => {
               />
             </div>
 
-            {error && <p className="text-red-500 text-sm">{error}</p>}
+            {error && <p className="text-red-400 text-sm">{error}</p>}
 
             <Button disabled={isLoading} className="w-full">
               {isLoading ? "Logging in..." : "Login"}
             </Button>
           </form>
-          <p className="text-sm text-center">
-            New here? <Link to="/signup">Create an account</Link>
+          <p className="text-sm text-center text-white">
+            New here?{" "}
+            <Link to="/signup" className="underline hover:text-gray-200">
+              Create an account
+            </Link>
           </p>
           <p className="text-sm text-center">
-            <Link to="/forgot-password" className="text-primary hover:underline">
+            <Link
+              to="/forgot-password"
+              className="text-primary hover:underline"
+            >
               Forgot password?
             </Link>
           </p>
